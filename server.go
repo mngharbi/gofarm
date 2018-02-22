@@ -30,39 +30,39 @@ var (
 */
 
 type server struct {
-	isInitialized		bool
-	isFirstStart		bool
-	isRunning			bool
-	isShuttingDown		bool
-	isForceShuttingDown	bool
+	isInitialized       bool
+	isFirstStart        bool
+	isRunning           bool
+	isShuttingDown      bool
+	isForceShuttingDown bool
 
-	workerPool		[]*worker
-	freeWorkers		[]*worker
-	jobPool			[]*job
-	jobPipe			chan *job
-	workerPipe		chan *worker
-	shutdownPipe	chan bool
-	workerWaitGroup	sync.WaitGroup
+	workerPool      []*worker
+	freeWorkers     []*worker
+	jobPool         []*job
+	jobPipe         chan *job
+	workerPipe      chan *worker
+	shutdownPipe    chan bool
+	workerWaitGroup sync.WaitGroup
 
 	// Used to control requests vs start/shutdown
 	stateLock *sync.RWMutex
 
 	// External custom functions defined on initialization
-	externalStart func(config Config, firstStart bool) error
+	externalStart    func(config Config, firstStart bool) error
 	externalShutdown func() error
-	externalWork func(rq *Request) *Response
+	externalWork     func(rq *Request) *Response
 }
 
 type job struct {
-	responseChannel		chan *Response
-	requestPtr			*Request
+	responseChannel chan *Response
+	requestPtr      *Request
 }
 
 /*
 	Main internal functions: start/run/shutdown
 */
 
-func (sv *server) start (conf *Config) error {
+func (sv *server) start(conf *Config) error {
 	if sv.isRunning {
 		return errors.New(startWhileRunningError)
 	}
@@ -81,10 +81,10 @@ func (sv *server) start (conf *Config) error {
 	// Build workers
 	sv.workerPool = make([]*worker, conf.NumWorkers)
 	sv.freeWorkers = make([]*worker, conf.NumWorkers)
-	for workerIndex := 0; workerIndex < conf.NumWorkers ; workerIndex++ {
+	for workerIndex := 0; workerIndex < conf.NumWorkers; workerIndex++ {
 		newWorker := worker{
-			jobs: make(chan *job),
-			sv:	sv,
+			jobs:  make(chan *job),
+			sv:    sv,
 			index: workerIndex,
 		}
 		sv.workerPool[workerIndex] = &newWorker
@@ -93,7 +93,7 @@ func (sv *server) start (conf *Config) error {
 
 	// Startup workers
 	sv.workerWaitGroup.Add(conf.NumWorkers)
-	for _,worker := range sv.workerPool {
+	for _, worker := range sv.workerPool {
 		go worker.run()
 	}
 
@@ -107,21 +107,21 @@ func (sv *server) start (conf *Config) error {
 	return nil
 }
 
-func (sv *server) run () {
+func (sv *server) run() {
 	for {
 		select {
 		// Accept incoming jobs
-		case newJob := <- sv.jobPipe:
+		case newJob := <-sv.jobPipe:
 			sv.jobPool = append(sv.jobPool, newJob)
 			break
 
 		// Accept status update from worker
-		case freeWorker := <- sv.workerPipe:
+		case freeWorker := <-sv.workerPipe:
 			sv.freeWorkers = append(sv.freeWorkers, freeWorker)
 			break
 
 		// Shutdown
-		case forceShutdown := <- sv.shutdownPipe:
+		case forceShutdown := <-sv.shutdownPipe:
 			sv.isShuttingDown = true
 			sv.isForceShuttingDown = forceShutdown
 			break
@@ -135,13 +135,13 @@ func (sv *server) run () {
 		// If force shutting down or work is done, signal workers to die
 		if sv.isForceShuttingDown ||
 			sv.isShuttingDown && len(sv.jobPool) == 0 && len(sv.freeWorkers) == len(sv.workerPool) {
-			for _,worker := range sv.workerPool {
+			for _, worker := range sv.workerPool {
 				go worker.shutdown()
 			}
 
 			// Close channels for pending jobs
 			if sv.isForceShuttingDown {
-				for _,job := range sv.jobPool {
+				for _, job := range sv.jobPool {
 					close(job.responseChannel)
 				}
 			}
@@ -158,7 +158,7 @@ func (sv *server) run () {
 	}
 }
 
-func (sv *server) shutdown (force bool) (err error) {
+func (sv *server) shutdown(force bool) (err error) {
 	if !sv.isRunning {
 		return errors.New(shutdownWhileNotRunningError)
 	}
@@ -180,12 +180,11 @@ func (sv *server) shutdown (force bool) (err error) {
 	return
 }
 
-
 /*
 	Helpers
 */
 
-func (sv *server) distributeJobs () {
+func (sv *server) distributeJobs() {
 	// Count maximum amount of assignments possible
 	jobPoolLen := len(sv.jobPool)
 	freeWorkersLen := len(sv.freeWorkers)

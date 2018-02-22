@@ -5,11 +5,10 @@
 package gofarm
 
 import (
-	"testing"
-	"sync"
 	"math/rand"
+	"sync"
+	"testing"
 )
-
 
 /*
 	Global vars
@@ -18,19 +17,18 @@ import (
 const functionalTestingNumWorkers = 4
 const testFibonnaciMaxNum = 1000000
 
-
 /*
 	Required definitions
 */
 
 type sumServer struct {
 	lock sync.RWMutex
-	sum int
+	sum  int
 }
 
 type sumRequest struct {
 	isRead bool
-	delta int
+	delta  int
 }
 
 type sumResponse struct {
@@ -71,11 +69,11 @@ func (sv *sumServer) Work(rqPtrNative *Request) *Response {
 */
 
 func calculateRandomFib() int {
-	n := rand.Intn(testFibonnaciMaxNum)+1
+	n := rand.Intn(testFibonnaciMaxNum) + 1
 	first := 0
 	second := 1
 	for i := 0; i < n; i++ {
-		first, second = second, first + second
+		first, second = second, first+second
 	}
 	return first
 }
@@ -181,7 +179,7 @@ func TestOneAdd(t *testing.T) {
 	StartServer(getConfig(functionalTestingNumWorkers))
 	MakeRequest(&sumRequest{
 		isRead: false,
-		delta: expected,
+		delta:  expected,
 	})
 	ShutdownServer()
 
@@ -190,7 +188,7 @@ func TestOneAdd(t *testing.T) {
 	responseChan, err := MakeRequest(&sumRequest{
 		isRead: true,
 	})
-	responseNativePtr := <- responseChan
+	responseNativePtr := <-responseChan
 	resp := (*responseNativePtr).(*sumResponse)
 	ShutdownServer()
 
@@ -212,19 +210,19 @@ func TestManyAddsOneStart(t *testing.T) {
 	randArray := make([]int, testCases)
 	channelArray := make([](chan *Response), testCases)
 	StartServer(getConfig(functionalTestingNumWorkers))
-	for i:=0; i < testCases; i++ {
-		randArray[i] = rand.Intn(maxNum)+1
+	for i := 0; i < testCases; i++ {
+		randArray[i] = rand.Intn(maxNum) + 1
 		channelArray[i], _ = MakeRequest(&sumRequest{
 			isRead: false,
-			delta: randArray[i],
+			delta:  randArray[i],
 		})
 	}
 	ShutdownServer()
 
 	// Count expected based on successful requests
 	expected := 0
-	for requestIndex,requestChannel := range channelArray {
-		_, ok := <- requestChannel
+	for requestIndex, requestChannel := range channelArray {
+		_, ok := <-requestChannel
 		if ok {
 			expected += randArray[requestIndex]
 		} else {
@@ -237,7 +235,7 @@ func TestManyAddsOneStart(t *testing.T) {
 	responseChan, err := MakeRequest(&sumRequest{
 		isRead: true,
 	})
-	responseNativePtr := <- responseChan
+	responseNativePtr := <-responseChan
 	resp := (*responseNativePtr).(*sumResponse)
 	ShutdownServer()
 
@@ -259,19 +257,19 @@ func TestForceShutdownManyAddsOneStart(t *testing.T) {
 	randArray := make([]int, testCases)
 	channelArray := make([](chan *Response), testCases)
 	StartServer(getConfig(functionalTestingNumWorkers))
-	for i:=0; i < testCases; i++ {
-		randArray[i] = rand.Intn(maxNum)+1
+	for i := 0; i < testCases; i++ {
+		randArray[i] = rand.Intn(maxNum) + 1
 		channelArray[i], _ = MakeRequest(&sumRequest{
 			isRead: false,
-			delta: randArray[i],
+			delta:  randArray[i],
 		})
 	}
 	ForceShutdownServer()
 
 	// Count expected based on successful requests
 	expected := 0
-	for requestIndex,requestChannel := range channelArray {
-		_, ok := <- requestChannel
+	for requestIndex, requestChannel := range channelArray {
+		_, ok := <-requestChannel
 		if ok {
 			expected += randArray[requestIndex]
 		}
@@ -282,7 +280,7 @@ func TestForceShutdownManyAddsOneStart(t *testing.T) {
 	responseChan, err := MakeRequest(&sumRequest{
 		isRead: true,
 	})
-	responseNativePtr := <- responseChan
+	responseNativePtr := <-responseChan
 	resp := (*responseNativePtr).(*sumResponse)
 	ShutdownServer()
 
@@ -298,7 +296,7 @@ func TestForceShutdownManyAddsOneStart(t *testing.T) {
 func makeRandomRequest() (err error) {
 	_, err = MakeRequest(&sumRequest{
 		isRead: false,
-		delta: rand.Intn(100)+1,
+		delta:  rand.Intn(100) + 1,
 	})
 	return
 }
@@ -311,9 +309,9 @@ func BenchmarkWrite1Worker(b *testing.B) {
 	}
 
 	StartServer(getConfig(1))
-    for n := 0; n < b.N; n++ {
-        makeRandomRequest()
-    }
+	for n := 0; n < b.N; n++ {
+		makeRandomRequest()
+	}
 	ShutdownServer()
 }
 
@@ -325,9 +323,9 @@ func BenchmarkWrite2Worker(b *testing.B) {
 	}
 
 	StartServer(getConfig(2))
-    for n := 0; n < b.N; n++ {
-        makeRandomRequest()
-    }
+	for n := 0; n < b.N; n++ {
+		makeRandomRequest()
+	}
 	ShutdownServer()
 }
 
@@ -339,8 +337,8 @@ func BenchmarkWrite4Worker(b *testing.B) {
 	}
 
 	StartServer(getConfig(4))
-    for n := 0; n < b.N; n++ {
-        makeRandomRequest()
-    }
+	for n := 0; n < b.N; n++ {
+		makeRandomRequest()
+	}
 	ShutdownServer()
 }

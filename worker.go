@@ -9,19 +9,19 @@ package gofarm
 */
 
 type worker struct {
-	index			int
-	jobs			chan *job
-	sv				*server
+	index int
+	jobs  chan *job
+	sv    *server
 }
 
 /*
 	Main internal functions: run/shutdown
 */
 
-func (wk *worker) run () {
+func (wk *worker) run() {
 	for {
 		// Accept incoming jobs
-		newJob, ok := <- wk.jobs
+		newJob, ok := <-wk.jobs
 
 		if ok {
 			// Get response through custom Work function
@@ -39,6 +39,6 @@ func (wk *worker) run () {
 	wk.sv.workerWaitGroup.Done()
 }
 
-func (wk *worker) shutdown () {
+func (wk *worker) shutdown() {
 	close(wk.jobs)
 }
