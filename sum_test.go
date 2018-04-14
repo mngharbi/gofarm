@@ -5,6 +5,7 @@
 package gofarm
 
 import (
+	"errors"
 	"math/rand"
 	"sync"
 	"testing"
@@ -22,8 +23,10 @@ const testFibonnaciMaxNum = 1000000
 */
 
 type sumServer struct {
-	lock sync.RWMutex
-	sum  int
+	lock         sync.RWMutex
+	sum          int
+	startFail    bool
+	shutdownFail bool
 }
 
 type sumRequest struct {
@@ -35,14 +38,21 @@ type sumResponse struct {
 	sum int
 }
 
-func (sv *sumServer) Start(_ Config, isFirstTime bool) error {
+func (sv *sumServer) Start(_ Config, isFirstTime bool) (err error) {
 	if isFirstTime {
 		sv.sum = 0
 	}
-	return nil
+	err = nil
+	if sv.startFail {
+		err = errors.New("")
+	}
+	return
 }
 
 func (sv *sumServer) Shutdown() error {
+	if sv.shutdownFail {
+		return errors.New("")
+	}
 	return nil
 }
 
@@ -92,9 +102,12 @@ func getConfig(workers int) Config {
 	}
 }
 
-func resetContext() (sh *ServerHandler, err error) {
+func resetContext(startFail bool, shutdownFail bool) (sh *ServerHandler, err error) {
 	sh = ProvisionServer()
-	err = sh.InitServer(&sumServer{})
+	err = sh.InitServer(&sumServer{
+		startFail:    startFail,
+		shutdownFail: shutdownFail,
+	})
 	return
 }
 
@@ -102,7 +115,7 @@ func resetContext() (sh *ServerHandler, err error) {
 	Server setup testing
 */
 func TestStartShutdown(t *testing.T) {
-	sh, initErr := resetContext()
+	sh, initErr := resetContext(false, false)
 	if initErr != nil {
 		t.Errorf(initErr.Error())
 		return
@@ -112,8 +125,21 @@ func TestStartShutdown(t *testing.T) {
 	sh.ShutdownServer()
 }
 
+func TestStartExternalError(t *testing.T) {
+	sh, initErr := resetContext(true, false)
+	if initErr != nil {
+		t.Errorf(initErr.Error())
+		return
+	}
+
+	startError := sh.StartServer(getConfig(functionalTestingNumWorkers))
+	if startError == nil {
+		t.Errorf("Start should fail if external shutdown fails.")
+	}
+}
+
 func TestShutdownFirst(t *testing.T) {
-	sh, initErr := resetContext()
+	sh, initErr := resetContext(false, false)
 	if initErr != nil {
 		t.Errorf(initErr.Error())
 		return
@@ -124,8 +150,24 @@ func TestShutdownFirst(t *testing.T) {
 		t.Errorf("Shutdown before start should fail.")
 	}
 }
+
+func TestShutdownExternalError(t *testing.T) {
+	sh, initErr := resetContext(false, true)
+	if initErr != nil {
+		t.Errorf(initErr.Error())
+		return
+	}
+
+	sh.StartServer(getConfig(functionalTestingNumWorkers))
+
+	shutdownError := sh.ShutdownServer()
+	if shutdownError == nil {
+		t.Errorf("Shutdown should fail if external shutdown fails.")
+	}
+}
+
 func TestRequestFirst(t *testing.T) {
-	sh, initErr := resetContext()
+	sh, initErr := resetContext(false, false)
 	if initErr != nil {
 		t.Errorf(initErr.Error())
 		return
@@ -138,7 +180,7 @@ func TestRequestFirst(t *testing.T) {
 }
 
 func TestDoubleStart(t *testing.T) {
-	sh, initErr := resetContext()
+	sh, initErr := resetContext(false, false)
 	if initErr != nil {
 		t.Errorf(initErr.Error())
 		return
@@ -161,7 +203,7 @@ func TestDoubleStart(t *testing.T) {
 }
 
 func TestDoubleInit(t *testing.T) {
-	sh, initErr := resetContext()
+	sh, initErr := resetContext(false, false)
 	if initErr != nil {
 		t.Errorf(initErr.Error())
 		return
@@ -176,8 +218,8 @@ func TestDoubleInit(t *testing.T) {
 /*
 	Decommission testing
 */
-func testDecommision(t *testing.T, startServer bool, forceDecommision bool) {
-	sh, initErr := resetContext()
+func testDecommision(t *testing.T, startServer bool, forceDecommision bool, shutdownFailure bool) {
+	sh, initErr := resetContext(false, shutdownFailure)
 	if initErr != nil {
 		t.Errorf(initErr.Error())
 		return
@@ -200,32 +242,39 @@ func testDecommision(t *testing.T, startServer bool, forceDecommision bool) {
 	} else {
 		err = sh.DecommissionServer()
 	}
-	if err != nil {
+
+	if shutdownFailure && err == nil {
+		t.Errorf("%v Decommision should fail while server is %v running and external shutdown fails.", forceText, runningText)
+	} else if !shutdownFailure && err != nil {
 		t.Errorf("%v Decommision should not fail while server is %v running.", forceText, runningText)
 	}
 }
 
 func TestProvisionDecommision(t *testing.T) {
-	testDecommision(t, false, false)
+	testDecommision(t, false, false, false)
 }
 
 func TestProvisionDecommisionRunning(t *testing.T) {
-	testDecommision(t, true, false)
+	testDecommision(t, true, false, false)
 }
 
 func TestForceProvisionDecommision(t *testing.T) {
-	testDecommision(t, false, true)
+	testDecommision(t, false, true, false)
 }
 
 func TestForceProvisionDecommisionRunning(t *testing.T) {
-	testDecommision(t, true, true)
+	testDecommision(t, true, true, false)
+}
+
+func TestForceProvisionDecommisionRunningExternalFail(t *testing.T) {
+	testDecommision(t, true, true, true)
 }
 
 /*
 	Functional testing
 */
 func TestOneAdd(t *testing.T) {
-	sh, initErr := resetContext()
+	sh, initErr := resetContext(false, false)
 	if initErr != nil {
 		t.Errorf(initErr.Error())
 		return
@@ -255,7 +304,7 @@ func TestOneAdd(t *testing.T) {
 }
 
 func TestManyAddsOneStart(t *testing.T) {
-	sh, initErr := resetContext()
+	sh, initErr := resetContext(false, false)
 	if initErr != nil {
 		t.Errorf(initErr.Error())
 		return
@@ -302,7 +351,7 @@ func TestManyAddsOneStart(t *testing.T) {
 }
 
 func TestForceShutdownManyAddsOneStart(t *testing.T) {
-	sh, initErr := resetContext()
+	sh, initErr := resetContext(false, false)
 	if initErr != nil {
 		t.Errorf(initErr.Error())
 		return
@@ -351,7 +400,7 @@ func TestForceShutdownManyAddsOneStart(t *testing.T) {
 */
 
 func BenchmarkWrite1Worker(b *testing.B) {
-	sh, initErr := resetContext()
+	sh, initErr := resetContext(false, false)
 	if initErr != nil {
 		b.Errorf(initErr.Error())
 		return
@@ -365,7 +414,7 @@ func BenchmarkWrite1Worker(b *testing.B) {
 }
 
 func BenchmarkWrite2Worker(b *testing.B) {
-	sh, initErr := resetContext()
+	sh, initErr := resetContext(false, false)
 	if initErr != nil {
 		b.Errorf(initErr.Error())
 		return
@@ -379,7 +428,7 @@ func BenchmarkWrite2Worker(b *testing.B) {
 }
 
 func BenchmarkWrite4Worker(b *testing.B) {
-	sh, initErr := resetContext()
+	sh, initErr := resetContext(false, false)
 	if initErr != nil {
 		b.Errorf(initErr.Error())
 		return
