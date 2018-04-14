@@ -20,9 +20,8 @@ const shutdownWhileNotRunningError = "Can't shutdown server while it's not runni
 	Global vars
 */
 var (
-	serverSingleton server = server{
-		stateLock: &sync.RWMutex{},
-	}
+	serverRack []*ServerHandler
+	rackLock   *sync.Mutex = &sync.Mutex{}
 )
 
 /*
@@ -42,6 +41,7 @@ type server struct {
 	jobPipe         chan *job
 	workerPipe      chan *worker
 	shutdownPipe    chan bool
+	serverWaitGroup sync.WaitGroup
 	workerWaitGroup sync.WaitGroup
 
 	// Used to control requests vs start/shutdown
@@ -98,6 +98,7 @@ func (sv *server) start(conf *Config) error {
 	}
 
 	// Start running server
+	sv.serverWaitGroup.Add(1)
 	go sv.run()
 
 	// Set flags
@@ -153,9 +154,13 @@ func (sv *server) run() {
 			sv.isForceShuttingDown = false
 			sv.isShuttingDown = false
 
+			sv.workerWaitGroup.Wait()
 			break
 		}
 	}
+
+	// Signal that server is done
+	sv.serverWaitGroup.Done()
 }
 
 func (sv *server) shutdown(force bool) (err error) {
@@ -174,8 +179,8 @@ func (sv *server) shutdown(force bool) (err error) {
 	// Signal to shutdown
 	sv.shutdownPipe <- force
 
-	// Wait for complete shutdown
-	sv.workerWaitGroup.Wait()
+	// Wait for server shutdown
+	sv.serverWaitGroup.Wait()
 
 	return
 }

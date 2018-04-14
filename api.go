@@ -6,6 +6,7 @@ package gofarm
 
 import (
 	"errors"
+	"sync"
 )
 
 /*
@@ -20,68 +21,105 @@ const shuttingDownError = "Server shutting down."
 	API
 */
 
-func ResetServer() {
-	serverSingleton.stateLock.Lock()
-	serverSingleton = server{
-		stateLock: serverSingleton.stateLock,
+func ProvisionServer() (sh *ServerHandler) {
+	rackLock.Lock()
+	serverNb := len(serverRack)
+	serverPtr := &server{
+		stateLock: &sync.RWMutex{},
 	}
-	serverSingleton.stateLock.Unlock()
+	sh = &ServerHandler{
+		internalIndex: serverNb,
+		serverPtr:     serverPtr,
+	}
+	serverRack = append(serverRack, sh)
+	rackLock.Unlock()
+	return
 }
 
-func InitServer(externalServer Server) error {
-	serverSingleton.stateLock.Lock()
+func (sh *ServerHandler) doDecommission(force bool) (err error) {
+	rackLock.Lock()
+	if force {
+		err = sh.ForceShutdownServer()
+	} else {
+		err = sh.ShutdownServer()
+	}
+	if err == nil {
+		serverRack = append(serverRack[:sh.internalIndex], serverRack[sh.internalIndex+1:]...)
+	}
+	rackLock.Unlock()
+	return
+}
 
-	if serverSingleton.isInitialized {
-		serverSingleton.stateLock.Unlock()
+func (sh *ServerHandler) ForceDecommissionServer() error {
+	return sh.doDecommission(true)
+}
+
+func (sh *ServerHandler) DecommissionServer() error {
+	return sh.doDecommission(false)
+}
+
+func (sh *ServerHandler) ResetServer() {
+	sh.serverPtr.stateLock.Lock()
+	sh.serverPtr = &server{
+		stateLock: sh.serverPtr.stateLock,
+	}
+	sh.serverPtr.stateLock.Unlock()
+}
+
+func (sh *ServerHandler) InitServer(externalServer Server) error {
+	sh.serverPtr.stateLock.Lock()
+
+	if sh.serverPtr.isInitialized {
+		sh.serverPtr.stateLock.Unlock()
 		return errors.New(alreadyInitializedError)
 	}
 
-	serverSingleton.isFirstStart = true
+	sh.serverPtr.isFirstStart = true
 
 	// Save external server functions
-	serverSingleton.externalStart = func(config Config, firstStart bool) error {
+	sh.serverPtr.externalStart = func(config Config, firstStart bool) error {
 		return externalServer.Start(config, firstStart)
 	}
-	serverSingleton.externalShutdown = func() error {
+	sh.serverPtr.externalShutdown = func() error {
 		return externalServer.Shutdown()
 	}
-	serverSingleton.externalWork = func(rq *Request) *Response {
+	sh.serverPtr.externalWork = func(rq *Request) *Response {
 		return externalServer.Work(rq)
 	}
 
-	serverSingleton.isInitialized = true
+	sh.serverPtr.isInitialized = true
 
-	serverSingleton.stateLock.Unlock()
+	sh.serverPtr.stateLock.Unlock()
 	return nil
 }
 
-func StartServer(conf Config) (err error) {
-	serverSingleton.stateLock.Lock()
-	err = serverSingleton.start(&conf)
-	serverSingleton.stateLock.Unlock()
+func (sh *ServerHandler) StartServer(conf Config) (err error) {
+	sh.serverPtr.stateLock.Lock()
+	err = sh.serverPtr.start(&conf)
+	sh.serverPtr.stateLock.Unlock()
 	return
 }
 
-func ShutdownServer() (err error) {
-	serverSingleton.stateLock.Lock()
-	err = serverSingleton.shutdown(false)
-	serverSingleton.stateLock.Unlock()
+func (sh *ServerHandler) ShutdownServer() (err error) {
+	sh.serverPtr.stateLock.Lock()
+	err = sh.serverPtr.shutdown(false)
+	sh.serverPtr.stateLock.Unlock()
 	return
 }
 
-func ForceShutdownServer() (err error) {
-	serverSingleton.stateLock.Lock()
-	err = serverSingleton.shutdown(true)
-	serverSingleton.stateLock.Unlock()
+func (sh *ServerHandler) ForceShutdownServer() (err error) {
+	sh.serverPtr.stateLock.Lock()
+	err = sh.serverPtr.shutdown(true)
+	sh.serverPtr.stateLock.Unlock()
 	return
 }
 
-func MakeRequest(request Request) (chan *Response, error) {
-	serverSingleton.stateLock.RLock()
+func (sh *ServerHandler) MakeRequest(request Request) (chan *Response, error) {
+	sh.serverPtr.stateLock.RLock()
 
 	// Error out if server is not running
-	if !serverSingleton.isRunning {
-		serverSingleton.stateLock.RUnlock()
+	if !sh.serverPtr.isRunning {
+		sh.serverPtr.stateLock.RUnlock()
 		return nil, errors.New(notRunningError)
 	}
 
@@ -90,9 +128,9 @@ func MakeRequest(request Request) (chan *Response, error) {
 	reqJob.responseChannel = make(chan *Response, 1)
 	requestCopy := request
 	reqJob.requestPtr = &requestCopy
-	serverSingleton.jobPipe <- &reqJob
+	sh.serverPtr.jobPipe <- &reqJob
 
-	serverSingleton.stateLock.RUnlock()
+	sh.serverPtr.stateLock.RUnlock()
 
 	return reqJob.responseChannel, nil
 }

@@ -68,6 +68,14 @@ func (sv *sumServer) Work(rqPtrNative *Request) *Response {
 	Test helpers
 */
 
+func makeRandomRequest(sh *ServerHandler) (err error) {
+	_, err = sh.MakeRequest(&sumRequest{
+		isRead: false,
+		delta:  rand.Intn(100) + 1,
+	})
+	return
+}
+
 func calculateRandomFib() int {
 	n := rand.Intn(testFibonnaciMaxNum) + 1
 	first := 0
@@ -84,10 +92,10 @@ func getConfig(workers int) Config {
 	}
 }
 
-func resetContext() error {
-	sv := sumServer{}
-	ResetServer()
-	return InitServer(&sv)
+func resetContext() (sh *ServerHandler, err error) {
+	sh = ProvisionServer()
+	err = sh.InitServer(&sumServer{})
+	return
 }
 
 /*
@@ -95,80 +103,79 @@ func resetContext() error {
 */
 
 func TestStartShutdown(t *testing.T) {
-	initErr := resetContext()
+	sh, initErr := resetContext()
 	if initErr != nil {
 		t.Errorf(initErr.Error())
 		return
 	}
 
-	StartServer(getConfig(functionalTestingNumWorkers))
-	ShutdownServer()
+	sh.StartServer(getConfig(functionalTestingNumWorkers))
+	sh.ShutdownServer()
 }
 
 func TestShutdownFirst(t *testing.T) {
-	initErr := resetContext()
+	sh, initErr := resetContext()
 	if initErr != nil {
 		t.Errorf(initErr.Error())
 		return
 	}
 
-	shutdownErr := ShutdownServer()
+	shutdownErr := sh.ShutdownServer()
 	if shutdownErr == nil {
 		t.Errorf("Shutdown before start should fail.")
 	}
 }
-
 func TestRequestFirst(t *testing.T) {
-	initErr := resetContext()
+	sh, initErr := resetContext()
 	if initErr != nil {
 		t.Errorf(initErr.Error())
 		return
 	}
 
-	err := makeRandomRequest()
+	err := makeRandomRequest(sh)
 	if err == nil {
 		t.Errorf("Request while server is down should fail.")
 	}
 }
 
 func TestDoubleStart(t *testing.T) {
-	initErr := resetContext()
+	sh, initErr := resetContext()
 	if initErr != nil {
 		t.Errorf(initErr.Error())
 		return
 	}
 
-	firstStartErr := StartServer(getConfig(functionalTestingNumWorkers))
+	firstStartErr := sh.StartServer(getConfig(functionalTestingNumWorkers))
 	if firstStartErr != nil {
 		t.Errorf("Starting should work.")
 	}
 
-	secondStartErr := StartServer(getConfig(functionalTestingNumWorkers))
+	secondStartErr := sh.StartServer(getConfig(functionalTestingNumWorkers))
 	if secondStartErr == nil {
 		t.Errorf("Starting twice should fail.")
 	}
 
-	shutdownErr := ShutdownServer()
+	shutdownErr := sh.ShutdownServer()
 	if shutdownErr != nil {
 		t.Errorf("Shutdown after double start should work.")
 	}
 }
 
 func TestDoubleInit(t *testing.T) {
-	initErr := resetContext()
+	sh, initErr := resetContext()
 	if initErr != nil {
 		t.Errorf(initErr.Error())
 		return
 	}
 
-	doubleInitErr := InitServer(&sumServer{})
+	doubleInitErr := sh.InitServer(&sumServer{})
 	if doubleInitErr == nil {
 		t.Errorf("Calling init twice should fail.")
 	}
 }
 
 func TestOneAdd(t *testing.T) {
-	initErr := resetContext()
+	sh, initErr := resetContext()
 	if initErr != nil {
 		t.Errorf(initErr.Error())
 		return
@@ -176,21 +183,21 @@ func TestOneAdd(t *testing.T) {
 
 	// Make request and shutdown server
 	expected := 10
-	StartServer(getConfig(functionalTestingNumWorkers))
-	MakeRequest(&sumRequest{
+	sh.StartServer(getConfig(functionalTestingNumWorkers))
+	sh.MakeRequest(&sumRequest{
 		isRead: false,
 		delta:  expected,
 	})
-	ShutdownServer()
+	sh.ShutdownServer()
 
 	// Restart server and get result
-	StartServer(getConfig(functionalTestingNumWorkers))
-	responseChan, err := MakeRequest(&sumRequest{
+	sh.StartServer(getConfig(functionalTestingNumWorkers))
+	responseChan, err := sh.MakeRequest(&sumRequest{
 		isRead: true,
 	})
 	responseNativePtr := <-responseChan
 	resp := (*responseNativePtr).(*sumResponse)
-	ShutdownServer()
+	sh.ShutdownServer()
 
 	if err != nil || resp.sum != expected {
 		t.Errorf("One sum request failed. results:\n result: %v\n expected: %v\n", resp.sum, expected)
@@ -198,7 +205,7 @@ func TestOneAdd(t *testing.T) {
 }
 
 func TestManyAddsOneStart(t *testing.T) {
-	initErr := resetContext()
+	sh, initErr := resetContext()
 	if initErr != nil {
 		t.Errorf(initErr.Error())
 		return
@@ -209,15 +216,15 @@ func TestManyAddsOneStart(t *testing.T) {
 	maxNum := 100
 	randArray := make([]int, testCases)
 	channelArray := make([](chan *Response), testCases)
-	StartServer(getConfig(functionalTestingNumWorkers))
+	sh.StartServer(getConfig(functionalTestingNumWorkers))
 	for i := 0; i < testCases; i++ {
 		randArray[i] = rand.Intn(maxNum) + 1
-		channelArray[i], _ = MakeRequest(&sumRequest{
+		channelArray[i], _ = sh.MakeRequest(&sumRequest{
 			isRead: false,
 			delta:  randArray[i],
 		})
 	}
-	ShutdownServer()
+	sh.ShutdownServer()
 
 	// Count expected based on successful requests
 	expected := 0
@@ -231,13 +238,13 @@ func TestManyAddsOneStart(t *testing.T) {
 	}
 
 	// Restart server and get result
-	StartServer(getConfig(functionalTestingNumWorkers))
-	responseChan, err := MakeRequest(&sumRequest{
+	sh.StartServer(getConfig(functionalTestingNumWorkers))
+	responseChan, err := sh.MakeRequest(&sumRequest{
 		isRead: true,
 	})
 	responseNativePtr := <-responseChan
 	resp := (*responseNativePtr).(*sumResponse)
-	ShutdownServer()
+	sh.ShutdownServer()
 
 	if err != nil || resp.sum != expected {
 		t.Errorf("Soft shutdown: multiple sum requests failed. results:\n result: %v\n expected: %v\n", resp.sum, expected)
@@ -245,7 +252,7 @@ func TestManyAddsOneStart(t *testing.T) {
 }
 
 func TestForceShutdownManyAddsOneStart(t *testing.T) {
-	initErr := resetContext()
+	sh, initErr := resetContext()
 	if initErr != nil {
 		t.Errorf(initErr.Error())
 		return
@@ -256,15 +263,15 @@ func TestForceShutdownManyAddsOneStart(t *testing.T) {
 	maxNum := 100
 	randArray := make([]int, testCases)
 	channelArray := make([](chan *Response), testCases)
-	StartServer(getConfig(functionalTestingNumWorkers))
+	sh.StartServer(getConfig(functionalTestingNumWorkers))
 	for i := 0; i < testCases; i++ {
 		randArray[i] = rand.Intn(maxNum) + 1
-		channelArray[i], _ = MakeRequest(&sumRequest{
+		channelArray[i], _ = sh.MakeRequest(&sumRequest{
 			isRead: false,
 			delta:  randArray[i],
 		})
 	}
-	ForceShutdownServer()
+	sh.ForceShutdownServer()
 
 	// Count expected based on successful requests
 	expected := 0
@@ -276,13 +283,13 @@ func TestForceShutdownManyAddsOneStart(t *testing.T) {
 	}
 
 	// Restart server and get result
-	StartServer(getConfig(functionalTestingNumWorkers))
-	responseChan, err := MakeRequest(&sumRequest{
+	sh.StartServer(getConfig(functionalTestingNumWorkers))
+	responseChan, err := sh.MakeRequest(&sumRequest{
 		isRead: true,
 	})
 	responseNativePtr := <-responseChan
 	resp := (*responseNativePtr).(*sumResponse)
-	ShutdownServer()
+	sh.ShutdownServer()
 
 	if err != nil || resp.sum != expected {
 		t.Errorf("Force shutdown, multiple sum requests failed. results:\n result: %v\n expected: %v\n", resp.sum, expected)
@@ -293,52 +300,44 @@ func TestForceShutdownManyAddsOneStart(t *testing.T) {
 	Benchmarking server performance
 */
 
-func makeRandomRequest() (err error) {
-	_, err = MakeRequest(&sumRequest{
-		isRead: false,
-		delta:  rand.Intn(100) + 1,
-	})
-	return
-}
-
 func BenchmarkWrite1Worker(b *testing.B) {
-	initErr := resetContext()
+	sh, initErr := resetContext()
 	if initErr != nil {
 		b.Errorf(initErr.Error())
 		return
 	}
 
-	StartServer(getConfig(1))
+	sh.StartServer(getConfig(1))
 	for n := 0; n < b.N; n++ {
-		makeRandomRequest()
+		makeRandomRequest(sh)
 	}
-	ShutdownServer()
+	sh.ShutdownServer()
 }
 
 func BenchmarkWrite2Worker(b *testing.B) {
-	initErr := resetContext()
+	sh, initErr := resetContext()
 	if initErr != nil {
 		b.Errorf(initErr.Error())
 		return
 	}
 
-	StartServer(getConfig(2))
+	sh.StartServer(getConfig(2))
 	for n := 0; n < b.N; n++ {
-		makeRandomRequest()
+		makeRandomRequest(sh)
 	}
-	ShutdownServer()
+	sh.ShutdownServer()
 }
 
 func BenchmarkWrite4Worker(b *testing.B) {
-	initErr := resetContext()
+	sh, initErr := resetContext()
 	if initErr != nil {
 		b.Errorf(initErr.Error())
 		return
 	}
 
-	StartServer(getConfig(4))
+	sh.StartServer(getConfig(4))
 	for n := 0; n < b.N; n++ {
-		makeRandomRequest()
+		makeRandomRequest(sh)
 	}
-	ShutdownServer()
+	sh.ShutdownServer()
 }

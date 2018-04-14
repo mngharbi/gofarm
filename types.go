@@ -17,3 +17,11 @@ type Server interface {
 	Shutdown() error
 	Work(*Request) *Response
 }
+
+/*
+	Reference used to interact with servers
+*/
+type ServerHandler struct {
+	internalIndex int
+	serverPtr     *server
+}
