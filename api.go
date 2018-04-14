@@ -38,14 +38,15 @@ func ProvisionServer() (sh *ServerHandler) {
 
 func (sh *ServerHandler) doDecommission(force bool) (err error) {
 	rackLock.Lock()
-	if force {
-		err = sh.ForceShutdownServer()
-	} else {
-		err = sh.ShutdownServer()
+	sh.serverPtr.stateLock.Lock()
+	err = nil
+	if sh.serverPtr.isRunning {
+		err = sh.serverPtr.shutdown(force)
 	}
 	if err == nil {
 		serverRack = append(serverRack[:sh.internalIndex], serverRack[sh.internalIndex+1:]...)
 	}
+	sh.serverPtr.stateLock.Unlock()
 	rackLock.Unlock()
 	return
 }

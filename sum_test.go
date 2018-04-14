@@ -99,9 +99,8 @@ func resetContext() (sh *ServerHandler, err error) {
 }
 
 /*
-	Functional tests
+	Server setup testing
 */
-
 func TestStartShutdown(t *testing.T) {
 	sh, initErr := resetContext()
 	if initErr != nil {
@@ -174,6 +173,57 @@ func TestDoubleInit(t *testing.T) {
 	}
 }
 
+/*
+	Decommission testing
+*/
+func testDecommision(t *testing.T, startServer bool, forceDecommision bool) {
+	sh, initErr := resetContext()
+	if initErr != nil {
+		t.Errorf(initErr.Error())
+		return
+	}
+
+	runningText := "not"
+	if startServer {
+		runningText = ""
+		err := sh.StartServer(getConfig(functionalTestingNumWorkers))
+		if err != nil {
+			t.Errorf("Starting server should not fail.")
+		}
+	}
+
+	var err error
+	forceText := ""
+	if forceDecommision {
+		forceText = "Force"
+		err = sh.ForceDecommissionServer()
+	} else {
+		err = sh.DecommissionServer()
+	}
+	if err != nil {
+		t.Errorf("%v Decommision should not fail while server is %v running.", forceText, runningText)
+	}
+}
+
+func TestProvisionDecommision(t *testing.T) {
+	testDecommision(t, false, false)
+}
+
+func TestProvisionDecommisionRunning(t *testing.T) {
+	testDecommision(t, true, false)
+}
+
+func TestForceProvisionDecommision(t *testing.T) {
+	testDecommision(t, false, true)
+}
+
+func TestForceProvisionDecommisionRunning(t *testing.T) {
+	testDecommision(t, true, true)
+}
+
+/*
+	Functional testing
+*/
 func TestOneAdd(t *testing.T) {
 	sh, initErr := resetContext()
 	if initErr != nil {
