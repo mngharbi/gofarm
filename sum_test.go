@@ -112,6 +112,54 @@ func resetContext(startFail bool, shutdownFail bool) (sh *ServerHandler, err err
 }
 
 /*
+	Nil handler testing
+*/
+
+func TestNilHandler(t *testing.T) {
+	var sh *ServerHandler = nil
+
+	err := sh.ForceDecommissionServer()
+	if err == nil {
+		t.Errorf("ForceDecommissionServer should fail if handler is nil.")
+	}
+
+	err = sh.DecommissionServer()
+	if err == nil {
+		t.Errorf("DecommissionServer should fail if handler is nil.")
+	}
+
+	err = sh.ResetServer()
+	if err == nil {
+		t.Errorf("ResetServer should fail if handler is nil.")
+	}
+
+	err = sh.InitServer(&sumServer{})
+	if err == nil {
+		t.Errorf("InitServer should fail if handler is nil.")
+	}
+
+	err = sh.StartServer(getConfig(functionalTestingNumWorkers))
+	if err == nil {
+		t.Errorf("StartServer should fail if handler is nil.")
+	}
+
+	err = sh.ShutdownServer()
+	if err == nil {
+		t.Errorf("ShutdownServer should fail if handler is nil.")
+	}
+
+	err = sh.ForceShutdownServer()
+	if err == nil {
+		t.Errorf("ForceShutdownServer should fail if handler is nil.")
+	}
+
+	_, err = sh.MakeRequest(nil)
+	if err == nil {
+		t.Errorf("MakeRequest should fail if handler is nil.")
+	}
+}
+
+/*
 	Server setup testing
 */
 func TestStartShutdown(t *testing.T) {

@@ -16,6 +16,38 @@ import (
 const notRunningError = "Server not running."
 const alreadyInitializedError = "Server already initialized."
 const shuttingDownError = "Server shutting down."
+const nilHandlerError = "Cannot make API on nil handler."
+
+/*
+	Utilities
+*/
+
+func (sh *ServerHandler) checkHandler() error {
+	if sh == nil {
+		return errors.New(nilHandlerError)
+	}
+	return nil
+}
+
+func (sh *ServerHandler) doDecommission(force bool) (err error) {
+	// Check handler
+	if err = sh.checkHandler(); err != nil {
+		return
+	}
+
+	rackLock.Lock()
+	sh.serverPtr.stateLock.Lock()
+	err = nil
+	if sh.serverPtr.isRunning {
+		err = sh.serverPtr.shutdown(force)
+	}
+	if err == nil {
+		serverRack = append(serverRack[:sh.internalIndex], serverRack[sh.internalIndex+1:]...)
+	}
+	sh.serverPtr.stateLock.Unlock()
+	rackLock.Unlock()
+	return
+}
 
 /*
 	API
@@ -36,21 +68,6 @@ func ProvisionServer() (sh *ServerHandler) {
 	return
 }
 
-func (sh *ServerHandler) doDecommission(force bool) (err error) {
-	rackLock.Lock()
-	sh.serverPtr.stateLock.Lock()
-	err = nil
-	if sh.serverPtr.isRunning {
-		err = sh.serverPtr.shutdown(force)
-	}
-	if err == nil {
-		serverRack = append(serverRack[:sh.internalIndex], serverRack[sh.internalIndex+1:]...)
-	}
-	sh.serverPtr.stateLock.Unlock()
-	rackLock.Unlock()
-	return
-}
-
 func (sh *ServerHandler) ForceDecommissionServer() error {
 	return sh.doDecommission(true)
 }
@@ -59,15 +76,26 @@ func (sh *ServerHandler) DecommissionServer() error {
 	return sh.doDecommission(false)
 }
 
-func (sh *ServerHandler) ResetServer() {
+func (sh *ServerHandler) ResetServer() (err error) {
+	// Check handler
+	if err = sh.checkHandler(); err != nil {
+		return
+	}
+
 	sh.serverPtr.stateLock.Lock()
 	sh.serverPtr = &server{
 		stateLock: sh.serverPtr.stateLock,
 	}
 	sh.serverPtr.stateLock.Unlock()
+	return
 }
 
-func (sh *ServerHandler) InitServer(externalServer Server) error {
+func (sh *ServerHandler) InitServer(externalServer Server) (err error) {
+	// Check handler
+	if err = sh.checkHandler(); err != nil {
+		return
+	}
+
 	sh.serverPtr.stateLock.Lock()
 
 	if sh.serverPtr.isInitialized {
@@ -95,6 +123,11 @@ func (sh *ServerHandler) InitServer(externalServer Server) error {
 }
 
 func (sh *ServerHandler) StartServer(conf Config) (err error) {
+	// Check handler
+	if err = sh.checkHandler(); err != nil {
+		return
+	}
+
 	sh.serverPtr.stateLock.Lock()
 	err = sh.serverPtr.start(&conf)
 	sh.serverPtr.stateLock.Unlock()
@@ -102,6 +135,11 @@ func (sh *ServerHandler) StartServer(conf Config) (err error) {
 }
 
 func (sh *ServerHandler) ShutdownServer() (err error) {
+	// Check handler
+	if err = sh.checkHandler(); err != nil {
+		return
+	}
+
 	sh.serverPtr.stateLock.Lock()
 	err = sh.serverPtr.shutdown(false)
 	sh.serverPtr.stateLock.Unlock()
@@ -109,6 +147,11 @@ func (sh *ServerHandler) ShutdownServer() (err error) {
 }
 
 func (sh *ServerHandler) ForceShutdownServer() (err error) {
+	// Check handler
+	if err = sh.checkHandler(); err != nil {
+		return
+	}
+
 	sh.serverPtr.stateLock.Lock()
 	err = sh.serverPtr.shutdown(true)
 	sh.serverPtr.stateLock.Unlock()
@@ -116,6 +159,11 @@ func (sh *ServerHandler) ForceShutdownServer() (err error) {
 }
 
 func (sh *ServerHandler) MakeRequest(request Request) (chan *Response, error) {
+	// Check handler
+	if err := sh.checkHandler(); err != nil {
+		return nil, err
+	}
+
 	sh.serverPtr.stateLock.RLock()
 
 	// Error out if server is not running
